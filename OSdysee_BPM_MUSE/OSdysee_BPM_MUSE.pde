@@ -72,7 +72,7 @@ float acc[] = new float[3];
 String chan_data = "";
 String acc_data = "";
 String channels[] = {"TP9", "FP1", "FP2", "TP10"};
-
+String trig = "";
 String header;
 PrintWriter output;
 
@@ -93,7 +93,7 @@ void setup() {
   header = header + "TP9_delta;TP9_theta;TP9_alpha;TP9_beta;TP9_gamma;";
   header = header + "FP1_delta;FP1_theta;FP1_alpha;FP1_beta;FP1_gamma;";
   header = header + "FP2_delta;FP2_theta;FP2_alpha;FP2_beta;FP2_gamma;";
-  header = header + "TP10_delta;TP10_theta;TP10_alpha;TP10_beta;TP10_gamma;";
+  header = header + "TP10_delta;TP10_theta;TP10_alpha;TP10_beta;TP10_gamma;trigger;";
   output.println(header);
 }
 
@@ -174,7 +174,8 @@ void draw() {
     for (int i=0; i<3; i++){
       acc_data = acc_data + ";" + acc[i];
     }
-  output.println(curHrVal + ";" + museSampleSec + ";" + museSampleMsec + acc_data + chan_data);
+  output.println(curHrVal + ";" + museSampleSec + ";" + museSampleMsec + acc_data + chan_data + ";" + trig);
+  trig = "";
 }
 
 
@@ -395,7 +396,13 @@ void UpdateHrInfo(boolean haveResponse)
 }
 
 void keyPressed() { // Press a key to save the data
-  output.flush(); // Write the remaining data
-  output.close(); // Finish the file
-  exit(); // Stop the program
+  if (key == ENTER) {
+    output.flush(); // Write the remaining data
+    output.close(); // Finish the file
+    exit(); // Stop the program
+  } else {
+    println("key pressed : " + key);
+    trig = "" + key;
+  }
+    
 }
