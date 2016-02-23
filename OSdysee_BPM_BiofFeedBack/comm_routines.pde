@@ -19,7 +19,7 @@ byte[] rspCharArray = new byte[160];
 int[] rspArgArray = new int[34];
 int reqVals;
 boolean validData = false;
-
+int lastms = 0;
 /*
  * Port selection related variables
  */
@@ -38,7 +38,7 @@ void InitSelectPortScreen() {
   int bheight = 12;
   String portName;
   println(Serial.list());
-  bt = new Serial(this, "/dev/tty.HC-06-DevB");
+  // bt = new Serial(this, "/dev/tty.HC-06-DevB");
   // Determine the number of ports we can display
   numPorts = Serial.list().length;
   int maxPorts = ((SCREEN_H - offsety) / (bheight + 2)) * maxCols;
@@ -87,7 +87,7 @@ boolean CheckPortSelected() {
 
 void SendBrightness(byte[] toSend){
   println("sending brightness as " + toSend[1]);
-  bt.write(toSend);
+  // bt.write(toSend);
 }
 
 
@@ -169,6 +169,7 @@ void serialEvent(Serial port) {
           CharIndex++;
         }
         validData = true;
+        //curTime = millis();
       }
 }
 

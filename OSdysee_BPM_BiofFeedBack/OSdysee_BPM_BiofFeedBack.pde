@@ -13,8 +13,13 @@
  *
  */
  
-
-
+/*
+ * Mapping between HR values and brigntness
+ */
+float minHrMap = 60;
+float maxHrMap = 120;
+// set the correct case in the arduino program here
+byte caseSwitch = 0;
 
 
 /*
@@ -24,8 +29,8 @@ int SCREEN_W = 1200;
 int SCREEN_H = 320;
 int NUM_HR_POINTS = 900;     // number of previous HR values in graph  60 = 1 minute // 900 = 15min // 5400=90min
 int NUM_REQ_HR_VALS = 16;   // number of HR values to get per request // bas 16
-int SAMPLE_PERIOD = 200;   // number of milliseconds between samples
-int WAIT_PERIOD = 150;      // number of milliseconds to wait for a response
+int SAMPLE_PERIOD = 1000;   // number of milliseconds between samples
+int WAIT_PERIOD = 100;      // number of milliseconds to wait for a response
 int STATE_DIS = 0;
 int STATE_HOLD = 1;
 int STATE_AVG = 2;
@@ -55,10 +60,23 @@ int curInitState = 0;
 int curState;
 boolean checkForResponse;
 boolean firstSample = true;
+
 int curHrVal;
+int prevHrVal;
+int nextHrVal;
+
+int curTime;
+int prevTime;
+int nextTime;
+
+int waitCount = 0;
+float smoothHrVal = 0;
+
 int curFlags;
 int curSampleCount;
 int prevSampleCount;
+
+float buffer[] = new float[4];
 
 PrintWriter output;
 
@@ -84,36 +102,40 @@ void draw() {
   } else if (curInitState == 2) {
     InitMainScreen();
     curInitState = 3;
-  } else {  
-    delay(SAMPLE_PERIOD - WAIT_PERIOD);
-  
-    // Check if we should send a command
-    if ((curState == STATE_AVG) || (curState == STATE_RAW)) {
-      GetHrData(NUM_REQ_HR_VALS);
-      checkForResponse = true;
+  } else {
+    // delay(SAMPLE_PERIOD - WAIT_PERIOD);
+    // get 1/10 sample from HrData
+    if ((waitCount % 10) == 0){
+      // Check if we should send a command
+      if ((curState == STATE_AVG) || (curState == STATE_RAW)) {
+        GetHrData(NUM_REQ_HR_VALS);
+        checkForResponse = true;
+      }
+    
+      delay(WAIT_PERIOD);
+    
+      // Check if we should check for and process a response
+      if (((curState == STATE_AVG) || (curState == STATE_RAW)) && checkForResponse) {        
+        UpdateHrInfo(HaveResponse());
+        checkForResponse = false;
+      }
+    } else {
+      // interpolate 9/10 samples from previous HrData
+      InterpolateHrInfo();
+      delay(WAIT_PERIOD);
     }
-  
-    delay(WAIT_PERIOD);
-  
-    // Check if we should check for and process a response
-    if (((curState == STATE_AVG) || (curState == STATE_RAW)) && checkForResponse) {        
-      UpdateHrInfo(HaveResponse());
-      checkForResponse = false;
-    }
+    waitCount += 1;
+   
+    // Transform HrVal into a brightness value
+    // and sent it to the arduino through bluetooth connection
+    // remap bpm to brightness
+    byte b = byte( map(smoothHrVal,minHrMap,maxHrMap,-128,128));
+    byte toSend[] = new byte[4];
+    toSend[0]=caseSwitch;
+    toSend[1]=b;
+    SendBrightness(toSend);
   }
-  output.println(curHrVal);
-  println("current HR value " + curHrVal);
-  // set the correct case here
-  byte caseSwitch=0;
-  // remap bpm to brightness
-  byte b = byte( map( curHrVal,40,100,-128,128));
-  byte toSend[] = new byte[4];
-  toSend[0]=caseSwitch;
-  toSend[1]=b;
-  SendBrightness(toSend);
 }
-
-
 
 
 void InitGui()
@@ -196,8 +218,6 @@ void InitMainScreen()
      line(220,170,1170,170);
      line(220,210,1170,210);
      line(220,250,1170,250);
-
-
 
   
   // Create the buttons
@@ -296,18 +316,28 @@ void CheckMainScreenButtons() {
 void UpdateHrInfo(boolean haveResponse)
 {
   if (haveResponse) {
+    //prevSampleCount = curSampleCount;
+    prevHrVal = curHrVal;
+    prevTime = curTime;
+    
     curFlags = rspArgArray[0];
     curSampleCount = rspArgArray[1];
     curHrVal = rspArgArray[2];
-  
+    curTime = millis();
+    
+    // data smoothing
+    buffer[waitCount % 4] = prevHrVal;
+    smoothHrVal = (buffer[0] + buffer[1] + buffer[2] + buffer[3])/4.;
+    
     // Update the heartrate value with the most current value
-    hrInfo.setVal(curHrVal);
+    // hrInfo.setVal(curHrVal);
+    hrInfo.setVal(prevHrVal);
     hrInfo.display();
   
     // Update the status display
     statInfo.setVal(curFlags);
     statInfo.display();
-  
+    
     // Update the graph
     if (firstSample) {
       firstSample = false;
@@ -324,12 +354,33 @@ void UpdateHrInfo(boolean haveResponse)
       DrawGraph();
     }
     prevSampleCount = curSampleCount;
+    //prevTime = curTime;
   } else {
     // Indicate no response
     statInfo.setVal(0x80);
     statInfo.display();
+  }  
+}
+
+void InterpolateHrInfo() {
+  int interpVal = 0;
+  // interpolate here
+  if (curTime - prevTime > 0) {
+    float a = (curHrVal - prevHrVal * 1.)/(curTime * 1. - prevTime * 1.);
+    interpVal = round(a * (millis() - prevTime) + prevHrVal);
+  } else {
+    interpVal = prevHrVal;
   }
-          
+  // Update the heartrate value with the interpolated value
+  hrInfo.setVal(interpVal);
+  hrInfo.display();
+  
+  // data smoothing
+  buffer[waitCount % 4] = interpVal;
+  smoothHrVal = (buffer[0] + buffer[1] + buffer[2] + buffer[3])/4.;
+  PushGraphData(round(smoothHrVal));
+  //PushGraphData(interpVal);
+  DrawGraph();
 }
 
 void keyPressed() { // Press a key to save the data
